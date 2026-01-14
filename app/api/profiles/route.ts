@@ -1,10 +1,42 @@
 import { NextRequest, NextResponse } from "next/server"
+import { supabase, isSupabaseConfigured, dbProfileToApiFormat, DbProfile } from "@/lib/supabase"
 
 // Disable static generation for this route
 export const dynamic = "force-dynamic"
 
 const TALENT_API_BASE = "https://api.talentprotocol.com"
 const GITHUB_API_BASE = "https://api.github.com"
+
+// ============================================
+// SUPABASE DATA FETCHING
+// ============================================
+async function getProfilesFromSupabase(): Promise<any[] | null> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return null
+  }
+  
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('builder_score', { ascending: false })
+    
+    if (error) {
+      console.error("❌ Supabase fetch error:", error)
+      return null
+    }
+    
+    if (data && data.length > 0) {
+      console.log(`✅ Loaded ${data.length} profiles from Supabase`)
+      // Convert DB format to API format for frontend compatibility
+      return data.map((profile: DbProfile) => dbProfileToApiFormat(profile))
+    }
+  } catch (error) {
+    console.error("❌ Supabase error:", error)
+  }
+  
+  return null
+}
 
 // ============================================
 // SERVER-SIDE CACHE
@@ -17,7 +49,7 @@ interface CacheEntry {
 
 // In-memory cache (persists across requests in the same server instance)
 let profilesCache: CacheEntry | null = null
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes cache TTL
+const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours cache TTL
 
 // Check if cache is valid
 function isCacheValid(): boolean {
@@ -588,13 +620,28 @@ export async function GET(request: NextRequest) {
   
   // Check cache first (unless force refresh)
   if (!forceRefresh) {
+    // Try in-memory cache first (fastest)
     const cachedProfiles = getCachedProfiles()
     if (cachedProfiles) {
       return NextResponse.json({
         profiles: cachedProfiles,
         total: cachedProfiles.length,
         cached: true,
+        source: 'memory',
         cacheAge: profilesCache ? Math.round((Date.now() - profilesCache.timestamp) / 1000) : 0
+      })
+    }
+    
+    // Try Supabase next (persistent storage)
+    const supabaseProfiles = await getProfilesFromSupabase()
+    if (supabaseProfiles && supabaseProfiles.length > 0) {
+      // Store in memory cache for faster subsequent requests
+      setCacheProfiles(supabaseProfiles)
+      return NextResponse.json({
+        profiles: supabaseProfiles,
+        total: supabaseProfiles.length,
+        cached: true,
+        source: 'supabase'
       })
     }
   } else {

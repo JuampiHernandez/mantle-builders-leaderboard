@@ -21,7 +21,7 @@ import { Bar, BarChart, Line, XAxis, YAxis, CartesianGrid, ComposedChart } from 
 // ============================================
 const CACHE_KEY = 'mantle_leaderboard_profiles'
 const CACHE_TIMESTAMP_KEY = 'mantle_leaderboard_timestamp'
-const CLIENT_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const CLIENT_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 
 interface CachedData {
   profiles: TalentProfile[]

@@ -2,6 +2,15 @@
   "functions": {
     "app/api/profiles/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/sync/route.ts": {
+      "maxDuration": 300
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/sync?secret=${SYNC_SECRET}",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }
