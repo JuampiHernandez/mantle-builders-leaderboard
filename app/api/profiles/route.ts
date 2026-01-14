@@ -17,7 +17,7 @@ interface CacheEntry {
 
 // In-memory cache (persists across requests in the same server instance)
 let profilesCache: CacheEntry | null = null
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes cache TTL
+const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours cache TTL
 
 // Check if cache is valid
 function isCacheValid(): boolean {
@@ -517,6 +517,10 @@ export async function GET(request: NextRequest) {
   const forceRefresh = searchParams.get('refresh') === 'true'
   
   console.log("\n🚀 Starting Talent Protocol API fetch...")
+  console.log("📋 Environment check:")
+  console.log("   - TALENT_API_KEY:", apiKey ? `✅ Set (${apiKey.slice(0, 8)}...)` : "❌ NOT SET")
+  console.log("   - GITHUB_TOKEN:", githubToken ? `✅ Set (${githubToken.slice(0, 8)}...)` : "⚠️ Not set")
+  console.log("   - OPENAI_API_KEY:", openaiKey ? `✅ Set (${openaiKey.slice(0, 8)}...)` : "⚠️ Not set")
   
   // Check cache first (unless force refresh)
   if (!forceRefresh) {
@@ -536,7 +540,7 @@ export async function GET(request: NextRequest) {
   if (!apiKey) {
     console.error("❌ TALENT_API_KEY not configured!")
     return NextResponse.json(
-      { error: "TALENT_API_KEY not configured. Add it to your .env.local file." },
+      { error: "TALENT_API_KEY not configured. Please add it to your Vercel environment variables." },
       { status: 500 }
     )
   }
