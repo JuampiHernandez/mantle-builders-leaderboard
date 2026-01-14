@@ -16,61 +16,7 @@ import {
 } from "@/components/ui/chart"
 import { Bar, BarChart, Line, XAxis, YAxis, CartesianGrid, ComposedChart } from "recharts"
 
-// ============================================
-// CLIENT-SIDE CACHE UTILITIES
-// ============================================
-const CACHE_KEY = 'mantle_leaderboard_profiles'
-const CACHE_TIMESTAMP_KEY = 'mantle_leaderboard_timestamp'
-const CLIENT_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
-
-interface CachedData {
-  profiles: TalentProfile[]
-  timestamp: number
-}
-
-function getClientCache(): CachedData | null {
-  if (typeof window === 'undefined') return null
-  
-  try {
-    const cached = localStorage.getItem(CACHE_KEY)
-    const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY)
-    
-    if (cached && timestamp) {
-      const cacheAge = Date.now() - parseInt(timestamp)
-      if (cacheAge < CLIENT_CACHE_TTL) {
-        return {
-          profiles: JSON.parse(cached),
-          timestamp: parseInt(timestamp)
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to read from localStorage:', e)
-  }
-  return null
-}
-
-function setClientCache(profiles: TalentProfile[]) {
-  if (typeof window === 'undefined') return
-  
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(profiles))
-    localStorage.setItem(CACHE_TIMESTAMP_KEY, String(Date.now()))
-  } catch (e) {
-    console.warn('Failed to write to localStorage:', e)
-  }
-}
-
-function clearClientCache() {
-  if (typeof window === 'undefined') return
-  
-  try {
-    localStorage.removeItem(CACHE_KEY)
-    localStorage.removeItem(CACHE_TIMESTAMP_KEY)
-  } catch (e) {
-    console.warn('Failed to clear localStorage:', e)
-  }
-}
+// No client-side cache - always fetch fresh from Supabase (which is fast)
 
 // Types for Talent Protocol API response
 interface GitHubStats {
@@ -259,61 +205,19 @@ export default function Page() {
     return () => clearInterval(timer)
   }, [])
 
-  // Fetch profiles function
-  const fetchProfiles = useCallback(async (forceRefresh = false) => {
+  // Fetch profiles function - always fetch from Supabase (fast)
+  const fetchProfiles = useCallback(async () => {
     try {
-      // Check client cache first (unless force refresh)
-      if (!forceRefresh) {
-        const cachedData = getClientCache()
-        if (cachedData) {
-          console.log("📦 Using client-side cached profiles")
-          setProfiles(cachedData.profiles)
-          setIsFromCache(true)
-          setLoading(false)
-          return
-        }
-      } else {
-        clearClientCache()
-      }
-      
       setLoading(true)
       setIsFromCache(false)
-      setLoadingProgress(0)
-      setLoadingStage("Connecting to server...")
+      setLoadingProgress(50)
+      setLoadingStage("Loading from database...")
       
-      console.log("🔄 Fetching profiles from API...")
+      console.log("🔄 Fetching profiles from Supabase...")
       
-      // Simulate progress stages for better UX
-      const progressInterval = setInterval(() => {
-        setLoadingProgress(prev => {
-          if (prev < 15) {
-            setLoadingStage("Searching wallet addresses...")
-            return prev + 3
-          } else if (prev < 30) {
-            setLoadingStage("Searching ENS identities...")
-            return prev + 2
-          } else if (prev < 45) {
-            setLoadingStage("Finding Mantle ecosystem contributors...")
-            return prev + 2
-          } else if (prev < 60) {
-            setLoadingStage("Fetching builder data points...")
-            return prev + 1.5
-          } else if (prev < 75) {
-            setLoadingStage("Loading GitHub repositories...")
-            return prev + 1
-          } else if (prev < 90) {
-            setLoadingStage("Generating AI summaries...")
-            return prev + 0.5
-          }
-          return prev
-        })
-      }, 500)
+      const response = await fetch("/api/profiles")
       
-      const url = forceRefresh ? "/api/profiles?refresh=true" : "/api/profiles"
-      const response = await fetch(url)
-      
-      clearInterval(progressInterval)
-      setLoadingProgress(95)
+      setLoadingProgress(90)
       setLoadingStage("Finalizing...")
       
       console.log("📡 Response status:", response.status)
@@ -325,26 +229,13 @@ export default function Page() {
       }
       
       const data = await response.json()
-      console.log(`✅ Received ${data.profiles?.length || 0} profiles (cached: ${data.cached})`)
+      console.log(`✅ Received ${data.profiles?.length || 0} profiles from ${data.source || 'unknown'}`)
       
       setLoadingProgress(100)
       
-      // Debug: Log first profile's data
-      if (data.profiles?.[0]) {
-        const p = data.profiles[0]
-        console.log("📊 First profile data:", {
-          name: p.display_name || p.name,
-          _githubStats: p._githubStats,
-          _githubProjects: p._githubProjects,
-          _recentProject: p._recentProject
-        })
-      }
-      
       if (data.profiles && Array.isArray(data.profiles)) {
         setProfiles(data.profiles)
-        // Save to client cache
-        setClientCache(data.profiles)
-        setIsFromCache(data.cached || false)
+        setIsFromCache(data.source === 'supabase')
       } else if (data.error) {
         throw new Error(data.error)
       } else {
@@ -359,10 +250,10 @@ export default function Page() {
     }
   }, [])
 
-  // Handle manual refresh
+  // Handle manual refresh - just refetch from Supabase
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true)
-    fetchProfiles(true)
+    fetchProfiles()
   }, [fetchProfiles])
 
   useEffect(() => {
