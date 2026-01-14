@@ -17,7 +17,7 @@ interface CacheEntry {
 
 // In-memory cache (persists across requests in the same server instance)
 let profilesCache: CacheEntry | null = null
-const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours cache TTL
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes cache TTL
 
 // Check if cache is valid
 function isCacheValid(): boolean {
@@ -287,6 +287,11 @@ async function fetchDataPointsByProfileId(profileId: string, apiKey: string): Pr
 
 // Get GitHub username from GitHub user ID
 async function getGitHubUsernameFromId(githubId: string, githubToken: string | undefined): Promise<string | null> {
+  // Skip if rate limited
+  if (shouldSkipGitHubAPI()) {
+    return null
+  }
+
   try {
     const headers: Record<string, string> = {
       "Accept": "application/vnd.github.v3+json",
@@ -302,6 +307,14 @@ async function getGitHubUsernameFromId(githubId: string, githubToken: string | u
     if (response.ok) {
       const user = await response.json()
       return user.login || null
+    } else if (response.status === 403) {
+      const remaining = response.headers.get('x-ratelimit-remaining')
+      const resetTime = response.headers.get('x-ratelimit-reset')
+      if (remaining === '0') {
+        githubRateLimitExceeded = true
+        githubRateLimitResetTime = parseInt(resetTime || '0') * 1000
+        console.log(`   ❌ GitHub API rate limit exceeded! Resets at: ${new Date(githubRateLimitResetTime).toISOString()}`)
+      }
     }
   } catch (error) {
     // Silently fail
@@ -330,6 +343,11 @@ function extractGitHubUsernameFromProfile(profile: any): string | null {
 
 // Fetch README content from a GitHub repository
 async function fetchReadme(owner: string, repo: string, githubToken: string | undefined): Promise<string | null> {
+  // Skip if rate limited
+  if (shouldSkipGitHubAPI()) {
+    return null
+  }
+
   try {
     const headers: Record<string, string> = {
       "Accept": "application/vnd.github.v3.raw",
@@ -349,6 +367,13 @@ async function fetchReadme(owner: string, repo: string, githubToken: string | un
       const readme = await response.text()
       // Limit to first 2000 characters for AI processing
       return readme.slice(0, 2000)
+    } else if (response.status === 403) {
+      const remaining = response.headers.get('x-ratelimit-remaining')
+      const resetTime = response.headers.get('x-ratelimit-reset')
+      if (remaining === '0') {
+        githubRateLimitExceeded = true
+        githubRateLimitResetTime = parseInt(resetTime || '0') * 1000
+      }
     }
   } catch (error) {
     // Silently fail
@@ -432,12 +457,33 @@ function createSimpleSummary(readme: string | null, repoName: string): string | 
   return `A project called ${repoName}`
 }
 
+// Track GitHub rate limit status
+let githubRateLimitExceeded = false
+let githubRateLimitResetTime: number | null = null
+
+// Check if we should skip GitHub API calls
+function shouldSkipGitHubAPI(): boolean {
+  if (!githubRateLimitExceeded) return false
+  if (githubRateLimitResetTime && Date.now() > githubRateLimitResetTime) {
+    // Rate limit has reset
+    githubRateLimitExceeded = false
+    githubRateLimitResetTime = null
+    return false
+  }
+  return true
+}
+
 // Fetch GitHub repositories for a user
 async function fetchGitHubRepos(username: string, githubToken: string | undefined): Promise<GitHubProjects> {
   const result: GitHubProjects = {
     topByStars: [],
     mostRecent: [],
     username: username
+  }
+
+  // Skip if rate limited
+  if (shouldSkipGitHubAPI()) {
+    return result
   }
 
   try {
@@ -456,6 +502,14 @@ async function fetchGitHubRepos(username: string, githubToken: string | undefine
     )
 
     if (!response.ok) {
+      // Check rate limit
+      const remaining = response.headers.get('x-ratelimit-remaining')
+      const resetTime = response.headers.get('x-ratelimit-reset')
+      if (response.status === 403 && (remaining === '0' || response.status === 403)) {
+        githubRateLimitExceeded = true
+        githubRateLimitResetTime = parseInt(resetTime || '0') * 1000
+        console.log(`   ❌ GitHub API rate limit exceeded! Resets at: ${new Date(githubRateLimitResetTime).toISOString()}`)
+      }
       return result
     }
 
@@ -512,6 +566,13 @@ export async function GET(request: NextRequest) {
   const githubToken = process.env.GITHUB_TOKEN
   const openaiKey = process.env.OPENAI_API_KEY
   
+  // Reset rate limit flag if it has expired
+  if (githubRateLimitResetTime && Date.now() > githubRateLimitResetTime) {
+    githubRateLimitExceeded = false
+    githubRateLimitResetTime = null
+    console.log("✅ GitHub rate limit has reset")
+  }
+  
   // Check for force refresh query param
   const { searchParams } = new URL(request.url)
   const forceRefresh = searchParams.get('refresh') === 'true'
@@ -521,6 +582,9 @@ export async function GET(request: NextRequest) {
   console.log("   - TALENT_API_KEY:", apiKey ? `✅ Set (${apiKey.slice(0, 8)}...)` : "❌ NOT SET")
   console.log("   - GITHUB_TOKEN:", githubToken ? `✅ Set (${githubToken.slice(0, 8)}...)` : "⚠️ Not set")
   console.log("   - OPENAI_API_KEY:", openaiKey ? `✅ Set (${openaiKey.slice(0, 8)}...)` : "⚠️ Not set")
+  if (githubRateLimitExceeded) {
+    console.log("   - ⚠️ GitHub API rate limited until:", new Date(githubRateLimitResetTime!).toISOString())
+  }
   
   // Check cache first (unless force refresh)
   if (!forceRefresh) {
@@ -786,8 +850,25 @@ export async function GET(request: NextRequest) {
   // STEP 5: Fetch GitHub usernames from IDs and then fetch repositories
   console.log("📡 [5/7] Fetching GitHub repositories...")
   
-  // First, resolve GitHub usernames from IDs
-  const usernamePromises = allProfiles.map(async (profile) => {
+  // Helper function to process in batches with delay
+  async function processBatches<T>(
+    items: T[],
+    batchSize: number,
+    delayMs: number,
+    processor: (item: T) => Promise<void>
+  ) {
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize)
+      await Promise.all(batch.map(processor))
+      if (i + batchSize < items.length) {
+        // Add delay between batches to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      }
+    }
+  }
+  
+  // First, resolve GitHub usernames from IDs (in batches of 10)
+  await processBatches(allProfiles, 10, 100, async (profile) => {
     if (profile._githubUserId) {
       const username = await getGitHubUsernameFromId(profile._githubUserId, githubToken)
       if (username) {
@@ -802,18 +883,14 @@ export async function GET(request: NextRequest) {
     }
   })
   
-  await Promise.all(usernamePromises)
-  
-  // Now fetch repos for profiles with usernames
-  const repoPromises = allProfiles.map(async (profile) => {
+  // Now fetch repos for profiles with usernames (in batches of 5 with longer delay)
+  await processBatches(allProfiles, 5, 200, async (profile) => {
     if (profile._githubUsername) {
       profile._githubProjects = await fetchGitHubRepos(profile._githubUsername, githubToken)
     } else {
       profile._githubProjects = { topByStars: [], mostRecent: [], username: null }
     }
   })
-  
-  await Promise.all(repoPromises)
   
   let profilesWithRepos = 0
   allProfiles.forEach((profile) => {
@@ -826,7 +903,8 @@ export async function GET(request: NextRequest) {
   // STEP 6: Fetch README and generate AI summaries for most recent projects
   console.log("📡 [6/7] Fetching READMEs and generating AI summaries...")
   
-  const summaryPromises = allProfiles.map(async (profile) => {
+  // Process in batches of 5 with delay to avoid rate limiting
+  await processBatches(allProfiles, 5, 200, async (profile) => {
     const mostRecent = profile._githubProjects?.mostRecent?.[0]
     if (mostRecent && profile._githubUsername) {
       // Fetch README
@@ -848,8 +926,6 @@ export async function GET(request: NextRequest) {
       }
     }
   })
-  
-  await Promise.all(summaryPromises)
   
   let profilesWithSummaries = 0
   allProfiles.forEach((profile) => {
@@ -887,6 +963,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     profiles: allProfiles,
     total: allProfiles.length,
-    cached: false
+    cached: false,
+    githubRateLimited: githubRateLimitExceeded,
+    githubRateLimitResets: githubRateLimitResetTime ? new Date(githubRateLimitResetTime).toISOString() : null
   })
 }
