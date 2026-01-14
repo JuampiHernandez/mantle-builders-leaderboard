@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { supabase, isSupabaseConfigured, dbProfileToApiFormat, DbProfile } from "@/lib/supabase"
+import { supabase, isSupabaseConfigured, dbProfileToApiFormat, apiProfileToDbProfile, DbProfile } from "@/lib/supabase"
 
 // Disable static generation for this route
 export const dynamic = "force-dynamic"
@@ -618,9 +618,21 @@ export async function GET(request: NextRequest) {
     console.log("   - ⚠️ GitHub API rate limited until:", new Date(githubRateLimitResetTime!).toISOString())
   }
   
-  // Check cache first (unless force refresh)
+  // Check Supabase first (unless force refresh)
   if (!forceRefresh) {
-    // Try in-memory cache first (fastest)
+    // Try Supabase (persistent storage - primary source)
+    const supabaseProfiles = await getProfilesFromSupabase()
+    if (supabaseProfiles && supabaseProfiles.length > 0) {
+      console.log(`✅ Returning ${supabaseProfiles.length} profiles from Supabase`)
+      return NextResponse.json({
+        profiles: supabaseProfiles,
+        total: supabaseProfiles.length,
+        cached: true,
+        source: 'supabase'
+      })
+    }
+    
+    // Fallback to memory cache only if Supabase is empty/not configured
     const cachedProfiles = getCachedProfiles()
     if (cachedProfiles) {
       return NextResponse.json({
@@ -632,20 +644,9 @@ export async function GET(request: NextRequest) {
       })
     }
     
-    // Try Supabase next (persistent storage)
-    const supabaseProfiles = await getProfilesFromSupabase()
-    if (supabaseProfiles && supabaseProfiles.length > 0) {
-      // Store in memory cache for faster subsequent requests
-      setCacheProfiles(supabaseProfiles)
-      return NextResponse.json({
-        profiles: supabaseProfiles,
-        total: supabaseProfiles.length,
-        cached: true,
-        source: 'supabase'
-      })
-    }
+    console.log("📭 No data in Supabase or cache - fetching fresh data...")
   } else {
-    console.log("🔄 Force refresh requested - bypassing cache")
+    console.log("🔄 Force refresh requested - bypassing Supabase and cache")
   }
   
   if (!apiKey) {
@@ -1004,13 +1005,46 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  // Cache the results
+  // Cache the results in memory (fallback)
   setCacheProfiles(allProfiles)
+
+  // Save to Supabase (primary storage)
+  let supabaseSynced = false
+  if (isSupabaseConfigured() && supabase) {
+    console.log("💾 Saving profiles to Supabase...")
+    try {
+      const dbProfiles = allProfiles.map(apiProfileToDbProfile)
+      
+      // Upsert in batches of 50
+      const batchSize = 50
+      let syncedCount = 0
+      
+      for (let i = 0; i < dbProfiles.length; i += batchSize) {
+        const batch = dbProfiles.slice(i, i + batchSize)
+        const { error } = await supabase
+          .from('profiles')
+          .upsert(batch, { onConflict: 'id' })
+        
+        if (error) {
+          console.error(`   ❌ Supabase batch error:`, error.message)
+        } else {
+          syncedCount += batch.length
+        }
+      }
+      
+      console.log(`   ✅ Synced ${syncedCount}/${allProfiles.length} profiles to Supabase`)
+      supabaseSynced = syncedCount > 0
+    } catch (error) {
+      console.error("   ❌ Supabase sync error:", error)
+    }
+  }
 
   return NextResponse.json({
     profiles: allProfiles,
     total: allProfiles.length,
     cached: false,
+    source: 'fresh',
+    supabaseSynced,
     githubRateLimited: githubRateLimitExceeded,
     githubRateLimitResets: githubRateLimitResetTime ? new Date(githubRateLimitResetTime).toISOString() : null
   })
