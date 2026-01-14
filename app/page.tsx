@@ -6,8 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
-import { ExternalLink, Search, Copy, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, Star, Sparkles, DollarSign, Eye, Zap, Clock, Trophy, Users, CheckCircle2, FileCode, GitBranch, Send, RefreshCw } from "lucide-react"
+import { ExternalLink, Search, Copy, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, Star, Sparkles, DollarSign, Eye, Zap, CheckCircle2, FileCode, GitBranch, RefreshCw } from "lucide-react"
 import { DistributeButton } from "@/components/DistributeButton"
 import {
   ChartContainer,
@@ -170,10 +169,7 @@ export default function Page() {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
   const [countdown, setCountdown] = useState({ days: 3, hours: 20, minutes: 4, seconds: 0 })
   
-  // Loading progress state
-  const [loadingProgress, setLoadingProgress] = useState(0)
-  const [loadingStage, setLoadingStage] = useState("")
-  const [isFromCache, setIsFromCache] = useState(false)
+  // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Countdown timer effect
@@ -209,18 +205,11 @@ export default function Page() {
   const fetchProfiles = useCallback(async () => {
     try {
       setLoading(true)
-      setIsFromCache(false)
-      setLoadingProgress(50)
-      setLoadingStage("Loading from database...")
+      setError(null)
       
       console.log("🔄 Fetching profiles from Supabase...")
       
       const response = await fetch("/api/profiles")
-      
-      setLoadingProgress(90)
-      setLoadingStage("Finalizing...")
-      
-      console.log("📡 Response status:", response.status)
       
       if (!response.ok) {
         const errorText = await response.text()
@@ -229,13 +218,10 @@ export default function Page() {
       }
       
       const data = await response.json()
-      console.log(`✅ Received ${data.profiles?.length || 0} profiles from ${data.source || 'unknown'}`)
-      
-      setLoadingProgress(100)
+      console.log(`✅ Received ${data.profiles?.length || 0} profiles`)
       
       if (data.profiles && Array.isArray(data.profiles)) {
         setProfiles(data.profiles)
-        setIsFromCache(data.source === 'supabase')
       } else if (data.error) {
         throw new Error(data.error)
       } else {
@@ -386,48 +372,24 @@ export default function Page() {
               />
             </div>
             
-            {/* Cache indicator and refresh button */}
-            <div className="flex items-center gap-2">
-              {isFromCache && !loading && (
-                <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30">
-                  Cached
-                </Badge>
-              )}
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleRefresh}
-                disabled={loading || isRefreshing}
-                className="h-10 w-10"
-                title="Refresh leaderboard"
-              >
-                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
+            {/* Refresh button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={loading || isRefreshing}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh Leaderboard
+            </Button>
           </div>
 
-          {/* Loading State with Progress Bar */}
+          {/* Loading State */}
           {loading && (
-            <div className="flex flex-col items-center justify-center py-12 gap-6">
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-full blur-xl opacity-30 animate-pulse" />
-                <Loader2 className="h-12 w-12 animate-spin text-emerald-400 relative" />
-              </div>
-              
-              <div className="w-full max-w-md space-y-3">
-                <Progress value={loadingProgress} className="h-2 bg-muted" />
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">{loadingStage}</span>
-                  <span className="text-emerald-400 font-mono">{Math.round(loadingProgress)}%</span>
-                </div>
-              </div>
-              
-              <div className="text-center space-y-1">
-                <p className="text-muted-foreground">Loading builder profiles...</p>
-                <p className="text-xs text-muted-foreground/70">
-                  First load may take up to 30 seconds while we fetch data from multiple sources
-                </p>
-              </div>
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+              <p className="text-muted-foreground">Loading builder profiles...</p>
             </div>
           )}
 
