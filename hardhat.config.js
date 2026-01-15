@@ -1,8 +1,37 @@
 require("@nomicfoundation/hardhat-toolbox");
+const fs = require("fs");
+const path = require("path");
+
+// Load .env.local file manually
+function loadEnvFile() {
+  const envPath = path.join(__dirname, ".env.local");
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, "utf-8");
+    const lines = content.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("#")) {
+        const eqIndex = trimmed.indexOf("=");
+        if (eqIndex > 0) {
+          const key = trimmed.substring(0, eqIndex);
+          const value = trimmed.substring(eqIndex + 1);
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+}
+
+loadEnvFile();
 
 // Get private key from environment variable
 // IMPORTANT: Never commit your private key! Always use environment variables
-const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
+let PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
+
+// Add 0x prefix if missing
+if (!PRIVATE_KEY.startsWith("0x")) {
+  PRIVATE_KEY = "0x" + PRIVATE_KEY;
+}
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {

@@ -40,6 +40,7 @@ export function DistributeButton({ className }: DistributeButtonProps) {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
+  const [distributionStatus, setDistributionStatus] = useState<"idle" | "pending" | "confirming" | "success" | "error">("idle");
 
   // Check if wallet is connected on mount
   useEffect(() => {
@@ -204,6 +205,7 @@ export function DistributeButton({ className }: DistributeButtonProps) {
     if (!window.ethereum || !account) return;
 
     setIsDistributing(true);
+    setDistributionStatus("pending");
     setError(null);
     setTxHash(null);
 
@@ -211,7 +213,7 @@ export function DistributeButton({ className }: DistributeButtonProps) {
       // distributeRewards() function selector
       const data = "0x6f4a2cd0";
 
-      const txHash = (await window.ethereum.request({
+      const hash = (await window.ethereum.request({
         method: "eth_sendTransaction",
         params: [
           {
@@ -222,16 +224,19 @@ export function DistributeButton({ className }: DistributeButtonProps) {
         ],
       })) as string;
 
-      setTxHash(txHash);
+      setTxHash(hash);
+      setDistributionStatus("confirming");
       
-      // Wait a bit and refresh balance
+      // Wait for confirmation and refresh balance
       setTimeout(() => {
+        setDistributionStatus("success");
         fetchContractBalance();
-      }, 5000);
+        setIsDistributing(false);
+      }, 3000);
     } catch (err: unknown) {
       const error = err as { message?: string };
       setError(error.message || "Transaction failed");
-    } finally {
+      setDistributionStatus("error");
       setIsDistributing(false);
     }
   }
@@ -250,6 +255,98 @@ export function DistributeButton({ className }: DistributeButtonProps) {
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
+        {/* Distributing State - Full Screen Overlay */}
+        {(distributionStatus === "pending" || distributionStatus === "confirming") && (
+          <div className="absolute inset-0 bg-background/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-lg">
+            <div className="flex flex-col items-center gap-6 p-8">
+              <div className="relative">
+                <div className="w-20 h-20 rounded-full border-4 border-emerald-500/20 flex items-center justify-center">
+                  <Loader2 className="h-10 w-10 animate-spin text-emerald-400" />
+                </div>
+                <div className="absolute -inset-2 rounded-full border-2 border-emerald-400/30 animate-ping" />
+              </div>
+              
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-bold text-emerald-400">
+                  {distributionStatus === "pending" ? "Distributing Rewards..." : "Confirming Transaction..."}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {distributionStatus === "pending" 
+                    ? "Please confirm the transaction in your wallet" 
+                    : "Waiting for blockchain confirmation"}
+                </p>
+              </div>
+
+              {txHash && (
+                <div className="bg-muted/50 rounded-lg p-4 w-full max-w-sm">
+                  <p className="text-xs text-muted-foreground mb-2">Transaction Hash:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs font-mono text-emerald-400 break-all">
+                      {txHash}
+                    </code>
+                  </div>
+                  <a
+                    href={`https://sepolia.mantlescan.xyz/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-3"
+                  >
+                    View on Mantlescan
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Success State - Full Screen Overlay */}
+        {distributionStatus === "success" && txHash && (
+          <div className="absolute inset-0 bg-background/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-lg">
+            <div className="flex flex-col items-center gap-6 p-8">
+              <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <CheckCircle2 className="h-12 w-12 text-emerald-400" />
+              </div>
+              
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-bold text-emerald-400">
+                  Rewards Distributed! 🎉
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Successfully sent to top 10 builders
+                </p>
+              </div>
+
+              <div className="bg-muted/50 rounded-lg p-4 w-full max-w-sm">
+                <p className="text-xs text-muted-foreground mb-2">Transaction Hash:</p>
+                <code className="text-xs font-mono text-emerald-400 break-all block mb-3">
+                  {txHash}
+                </code>
+                <a
+                  href={`https://sepolia.mantlescan.xyz/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-blue-400 hover:underline"
+                >
+                  View on Mantlescan
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </div>
+
+              <Button
+                onClick={() => {
+                  setDistributionStatus("idle");
+                  setTxHash(null);
+                }}
+                variant="outline"
+                className="mt-2"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="h-5 w-5 text-emerald-400" />
@@ -271,7 +368,7 @@ export function DistributeButton({ className }: DistributeButtonProps) {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Contract</span>
                 <a
-                  href={`https://mantlescan.xyz/address/${CONTRACT_ADDRESS}`}
+                  href={`https://sepolia.mantlescan.xyz/address/${CONTRACT_ADDRESS}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-mono text-xs text-blue-400 hover:underline flex items-center gap-1"
@@ -337,22 +434,13 @@ export function DistributeButton({ className }: DistributeButtonProps) {
               disabled={isDistributing || parseFloat(contractBalance) === 0}
               className="w-full gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
             >
-              {isDistributing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Distributing...
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4" />
-                  Distribute {contractBalance} ETH
-                </>
-              )}
+              <Send className="h-4 w-4" />
+              Distribute {contractBalance} ETH
             </Button>
           )}
 
           {/* Connected Account */}
-          {isConnected && account && (
+          {isConnected && account && !isDistributing && (
             <div className="text-xs text-center text-muted-foreground">
               Connected: {account.slice(0, 6)}...{account.slice(-4)}
               {isOwner && (
@@ -363,29 +451,21 @@ export function DistributeButton({ className }: DistributeButtonProps) {
             </div>
           )}
 
-          {/* Success Message */}
-          {txHash && (
-            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-4">
-              <p className="text-sm text-emerald-400 flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4" />
-                Rewards distributed successfully!
-              </p>
-              <a
-                href={`https://mantlescan.xyz/tx/${txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-2"
-              >
-                View transaction
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </div>
-          )}
-
           {/* Error Message */}
-          {error && (
+          {error && distributionStatus === "error" && (
             <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-4">
               <p className="text-sm text-red-400">{error}</p>
+              <Button
+                onClick={() => {
+                  setDistributionStatus("idle");
+                  setError(null);
+                }}
+                variant="ghost"
+                size="sm"
+                className="mt-2 text-xs"
+              >
+                Try Again
+              </Button>
             </div>
           )}
         </div>

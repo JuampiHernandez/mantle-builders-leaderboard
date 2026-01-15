@@ -1,184 +1,232 @@
-# BuilderRewards Smart Contract - Deployment Guide
+# 🚀 BuilderRewards Deployment Guide
 
-This guide explains how to deploy the BuilderRewards smart contract on Mantle Network.
+Complete step-by-step guide to deploy and test the reward distribution contract on Mantle.
 
-## Overview
+---
 
-The BuilderRewards contract allows you to:
-- Receive ETH deposits
-- Distribute ETH to the top 10 builders based on a weighted scale
-- Update the list of top builders
+## 📊 How Distribution Works
 
-### Distribution Scale (for 10 ETH total)
-| Rank | Percentage | Amount |
-|------|------------|--------|
-| 1st  | 25%        | 2.5 ETH |
-| 2nd  | 18%        | 1.8 ETH |
-| 3rd  | 14%        | 1.4 ETH |
-| 4th  | 11%        | 1.1 ETH |
-| 5th  | 9%         | 0.9 ETH |
-| 6th  | 7%         | 0.7 ETH |
-| 7th  | 6%         | 0.6 ETH |
-| 8th  | 5%         | 0.5 ETH |
-| 9th  | 3%         | 0.3 ETH |
-| 10th | 2%         | 0.2 ETH |
+The contract distributes **whatever ETH is in it** based on these percentages:
 
-## Prerequisites
+| Rank | Percentage | If 0.00001 ETH | If 10 ETH |
+|------|------------|----------------|-----------|
+| 1st  | 25%        | 0.0000025 ETH  | 2.5 ETH   |
+| 2nd  | 18%        | 0.0000018 ETH  | 1.8 ETH   |
+| 3rd  | 14%        | 0.0000014 ETH  | 1.4 ETH   |
+| 4th  | 11%        | 0.0000011 ETH  | 1.1 ETH   |
+| 5th  | 9%         | 0.0000009 ETH  | 0.9 ETH   |
+| 6th  | 7%         | 0.0000007 ETH  | 0.7 ETH   |
+| 7th  | 6%         | 0.0000006 ETH  | 0.6 ETH   |
+| 8th  | 5%         | 0.0000005 ETH  | 0.5 ETH   |
+| 9th  | 3%         | 0.0000003 ETH  | 0.3 ETH   |
+| 10th | 2%         | 0.0000002 ETH  | 0.2 ETH   |
 
-1. **Node.js** (v18 or higher)
-2. **A wallet with MNT** (Mantle's native token for gas fees)
-3. **Private key** for deployment
+---
 
-## Step 1: Install Dependencies
+## 📋 STEP-BY-STEP DEPLOYMENT
 
-```bash
-npm install --save-dev hardhat @nomicfoundation/hardhat-toolbox dotenv
-```
+### Step 1: Create a Deployer Wallet
 
-## Step 2: Create Your Private Key
+You need a wallet to deploy the contract. This wallet will be the **owner** and the only one who can trigger distributions.
 
-⚠️ **IMPORTANT: You must create your own private key. Never share it with anyone!**
-
-### Option A: Using MetaMask
+**Option A: Use MetaMask**
 1. Open MetaMask
-2. Click on the three dots menu → Account Details
-3. Click "Show Private Key"
-4. Enter your password
-5. Copy the private key
+2. Create a new account (or use existing)
+3. Click the 3 dots → "Account details" → "Show private key"
+4. Copy the private key (without the `0x` prefix)
 
-### Option B: Create a New Wallet
-1. Go to [MetaMask](https://metamask.io/) and create a new wallet
-2. **Write down your seed phrase** and store it safely
-3. Export the private key as shown above
+**Option B: Create a fresh wallet for deployment**
+1. Go to https://metamask.io and install
+2. Create new wallet, save your seed phrase
+3. Export private key as above
 
-### Option C: Using Hardhat (for development only)
-```bash
-npx hardhat node
-# This will generate test accounts with private keys
-```
+---
 
-## Step 3: Configure Environment Variables
+### Step 2: Get MNT for Gas Fees
 
-Create or update your `.env.local` file:
+You need MNT (Mantle's native token) to pay for gas.
+
+**For Testnet (Mantle Sepolia) - FREE:**
+1. Go to https://faucet.sepolia.mantle.xyz/
+2. Enter your wallet address
+3. Get free test MNT
+
+**For Mainnet:**
+1. Bridge ETH from Ethereum: https://bridge.mantle.xyz/
+2. Or buy MNT on exchanges
+
+---
+
+### Step 3: Configure Environment Variables
+
+Edit your `.env.local` file and add:
 
 ```env
 # Your deployer wallet private key (WITHOUT 0x prefix)
-DEPLOYER_PRIVATE_KEY=your_private_key_here
-
-# After deployment, add the contract address
-NEXT_PUBLIC_CONTRACT_ADDRESS=
-
-# Optional: For contract verification
-MANTLESCAN_API_KEY=your_api_key_here
+DEPLOYER_PRIVATE_KEY=your_64_character_private_key_here
 ```
 
-## Step 4: Get MNT for Gas Fees
+⚠️ **NEVER share your private key or commit it to git!**
 
-### For Mainnet:
-- Bridge ETH from Ethereum to Mantle using [Mantle Bridge](https://bridge.mantle.xyz/)
-- Or buy MNT on exchanges
+---
 
-### For Testnet (Mantle Sepolia):
-- Get test MNT from [Mantle Faucet](https://faucet.sepolia.mantle.xyz/)
+### Step 4: Get Top 10 Builder Addresses
 
-## Step 5: Update Builder Addresses
+Run this command to fetch the top 10 builders from your leaderboard:
 
-Edit `scripts/deploy.ts` and update the `initialBuilders` array with the actual wallet addresses of your top 10 builders:
+```bash
+node scripts/get-top-builders.js
+```
 
-```typescript
+This will output something like:
+```
+📋 TOP 10 BUILDERS BY SCORE:
+
+Rank 1: alice.eth
+   Score: 850
+   Wallet: 0x1234...
+
+...
+
+📝 COPY THIS INTO scripts/deploy.js:
+
 const initialBuilders = [
-  "0x...", // Rank 1
-  "0x...", // Rank 2
-  // ... etc
+  "0x1234...", // Rank 1
+  "0x5678...", // Rank 2
+  ...
 ];
 ```
 
-## Step 6: Deploy the Contract
+Copy the `initialBuilders` array and paste it into `scripts/deploy.js`.
 
-### Deploy to Mantle Testnet (Recommended First)
+---
+
+### Step 5: Deploy to Testnet First (Recommended)
+
+Always test on Sepolia testnet before mainnet!
+
 ```bash
-npx hardhat run scripts/deploy.ts --network mantleSepolia
+npx hardhat run scripts/deploy.js --network mantleSepolia
 ```
 
-### Deploy to Mantle Mainnet
-```bash
-npx hardhat run scripts/deploy.ts --network mantle
+You'll see output like:
+```
+🚀 Deploying BuilderRewards contract to Mantle...
+
+📍 Deploying with account: 0xYourAddress
+💰 Account balance: 0.5 MNT
+
+✅ BuilderRewards deployed successfully!
+📍 Contract address: 0xContractAddress
+
+🔗 View on Mantlescan:
+   https://sepolia.mantlescan.xyz/address/0xContractAddress
 ```
 
-## Step 7: Update Frontend Configuration
+**Save the contract address!**
 
-After deployment, update your `.env.local`:
+---
 
+### Step 6: Test the Contract
+
+#### 6a. Update your `.env.local`:
 ```env
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x_your_deployed_contract_address
+NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourContractAddress
 ```
 
-## Step 8: Verify the Contract (Optional)
+#### 6b. Send test ETH to the contract:
+
+Using MetaMask:
+1. Open MetaMask
+2. Click "Send"
+3. Paste the contract address
+4. Enter amount: `0.00001` ETH
+5. Confirm transaction
+
+#### 6c. Test distribution:
+
+1. Start your website: `npm run dev`
+2. Open http://localhost:3000
+3. Click "Distribute Rewards" button
+4. Connect your deployer wallet
+5. Click "Distribute"
+6. Check Mantlescan to verify the transactions
+
+---
+
+### Step 7: Deploy to Mainnet
+
+Once testing is successful:
 
 ```bash
-npx hardhat verify --network mantle CONTRACT_ADDRESS "BUILDER1_ADDRESS" "BUILDER2_ADDRESS" ... "BUILDER10_ADDRESS"
+npx hardhat run scripts/deploy.js --network mantle
 ```
 
-## Using the Contract
+Update `.env.local` with the mainnet contract address:
+```env
+NEXT_PUBLIC_CONTRACT_ADDRESS=0xMainnetContractAddress
+```
 
-### Send ETH to the Contract
-Simply send ETH to the contract address using any wallet.
+---
 
-### Distribute Rewards (Owner Only)
-1. Click the "Distribute Rewards" button on the website
-2. Connect your wallet (must be the owner wallet)
+### Step 8: Fund and Distribute
+
+1. Send ETH to the mainnet contract address
+2. Click "Distribute Rewards" on your website
 3. Confirm the transaction
+4. 🎉 Rewards distributed!
 
-### Update Top Builders (Owner Only)
-Call `updateTopBuilders()` with the new array of 10 addresses.
+---
 
-## Contract Functions
+## 🔧 Useful Commands
 
-| Function | Access | Description |
-|----------|--------|-------------|
-| `receive()` | Public | Receive ETH deposits |
-| `distributeRewards()` | Owner | Distribute all ETH to builders |
-| `updateTopBuilders(address[10])` | Owner | Update builder addresses |
-| `getBalance()` | Public | Get contract ETH balance |
-| `getTopBuilders()` | Public | Get current builder addresses |
-| `getDistributionAmounts()` | Public | Preview distribution amounts |
-| `emergencyWithdraw()` | Owner | Withdraw all funds (emergency) |
-| `transferOwnership(address)` | Owner | Transfer contract ownership |
+| Command | Description |
+|---------|-------------|
+| `npx hardhat compile` | Compile the contract |
+| `npx hardhat run scripts/deploy.js --network mantleSepolia` | Deploy to testnet |
+| `npx hardhat run scripts/deploy.js --network mantle` | Deploy to mainnet |
+| `node scripts/get-top-builders.js` | Get top 10 builder addresses |
 
-## Security Considerations
+---
 
-1. **Never share your private key**
-2. **Test on testnet first** before deploying to mainnet
-3. **Verify builder addresses** before deployment
-4. **Keep your owner wallet secure** - it controls the contract
-5. **Consider using a multisig** for production deployments
+## 🌐 Network Details
 
-## Mantle Network Details
-
-### Mainnet
+### Mantle Mainnet
 - Chain ID: 5000
 - RPC: https://rpc.mantle.xyz
 - Explorer: https://mantlescan.xyz
+- Currency: MNT
 
-### Sepolia Testnet
+### Mantle Sepolia (Testnet)
 - Chain ID: 5003
 - RPC: https://rpc.sepolia.mantle.xyz
 - Explorer: https://sepolia.mantlescan.xyz
+- Faucet: https://faucet.sepolia.mantle.xyz/
 
-## Troubleshooting
+---
 
-### "Insufficient funds"
-- Make sure you have enough MNT for gas fees
-- Check your wallet balance on Mantlescan
+## ❓ Troubleshooting
+
+### "Insufficient funds for gas"
+- Make sure you have MNT in your deployer wallet
+- For testnet, use the faucet
 
 ### "Only owner can call this function"
-- Make sure you're connected with the wallet that deployed the contract
+- You must be connected with the same wallet that deployed the contract
 
-### Transaction stuck
-- Try increasing gas price
-- Check network status on Mantlescan
+### "No funds to distribute"
+- Send ETH to the contract first before distributing
 
-## Support
+### Contract not showing on website
+- Make sure `NEXT_PUBLIC_CONTRACT_ADDRESS` is set in `.env.local`
+- Restart your dev server after changing env variables
 
-- [Mantle Documentation](https://docs.mantle.xyz)
-- [Mantle Discord](https://discord.gg/mantle)
+---
+
+## 🔐 Security Checklist
+
+- [ ] Private key is NOT committed to git
+- [ ] Private key is in `.env.local` (which is gitignored)
+- [ ] Tested on Sepolia testnet first
+- [ ] Verified all 10 builder addresses are correct
+- [ ] Deployer wallet is secured (seed phrase backed up)
