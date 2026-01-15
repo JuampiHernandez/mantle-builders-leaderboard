@@ -133,16 +133,16 @@ export const MANTLE_SEPOLIA_CHAIN = {
 // USE TESTNET FOR NOW - Change to MANTLE_MAINNET when ready for production
 export const MANTLE_CHAIN = MANTLE_SEPOLIA_CHAIN;
 
-// Distribution percentages for display
+// Distribution percentages for display (based on 10,000 MNT prize pool)
 export const DISTRIBUTION_PERCENTAGES = [
-  { rank: 1, percentage: 25, label: "2.5 ETH" },
-  { rank: 2, percentage: 18, label: "1.8 ETH" },
-  { rank: 3, percentage: 14, label: "1.4 ETH" },
-  { rank: 4, percentage: 11, label: "1.1 ETH" },
-  { rank: 5, percentage: 9, label: "0.9 ETH" },
-  { rank: 6, percentage: 7, label: "0.7 ETH" },
-  { rank: 7, percentage: 6, label: "0.6 ETH" },
-  { rank: 8, percentage: 5, label: "0.5 ETH" },
-  { rank: 9, percentage: 3, label: "0.3 ETH" },
-  { rank: 10, percentage: 2, label: "0.2 ETH" },
+  { rank: 1, percentage: 25, label: "2,500 MNT" },
+  { rank: 2, percentage: 18, label: "1,800 MNT" },
+  { rank: 3, percentage: 14, label: "1,400 MNT" },
+  { rank: 4, percentage: 11, label: "1,100 MNT" },
+  { rank: 5, percentage: 9, label: "900 MNT" },
+  { rank: 6, percentage: 7, label: "700 MNT" },
+  { rank: 7, percentage: 6, label: "600 MNT" },
+  { rank: 8, percentage: 5, label: "500 MNT" },
+  { rank: 9, percentage: 3, label: "300 MNT" },
+  { rank: 10, percentage: 2, label: "200 MNT" },
 ];

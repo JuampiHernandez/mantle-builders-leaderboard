@@ -400,7 +400,7 @@ export default function Page() {
             {/* Rewards Distribution Card */}
             <div className="flex-1 bg-card border border-border rounded-2xl p-8 text-center">
               <div className="text-sm text-muted-foreground uppercase tracking-wider mb-2">Prize Pool</div>
-              <div className="text-5xl font-bold mb-6">10 ETH</div>
+              <div className="text-5xl font-bold mb-6">10,000 $MNT</div>
               <div className="text-sm text-muted-foreground mb-3">Next Distribution</div>
               <div className="text-3xl font-mono font-bold text-emerald-400">
                 {String(countdown.days).padStart(2, '0')}:{String(countdown.hours).padStart(2, '0')}:{String(countdown.minutes).padStart(2, '0')}:{String(countdown.seconds).padStart(2, '0')}

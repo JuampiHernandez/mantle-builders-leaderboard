@@ -353,7 +353,7 @@ export function DistributeButton({ className }: DistributeButtonProps) {
             Distribute Builder Rewards
           </DialogTitle>
           <DialogDescription>
-            Distribute ETH rewards to the top 10 Mantle builders based on their ranking.
+            Distribute MNT rewards to the top 10 Mantle builders based on their ranking.
           </DialogDescription>
         </DialogHeader>
 
@@ -363,7 +363,7 @@ export function DistributeButton({ className }: DistributeButtonProps) {
             <div className="rounded-lg bg-muted/50 p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Contract Balance</span>
-                <span className="font-mono font-bold text-emerald-400">{contractBalance} ETH</span>
+                <span className="font-mono font-bold text-emerald-400">{contractBalance} MNT</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Contract</span>
@@ -435,7 +435,7 @@ export function DistributeButton({ className }: DistributeButtonProps) {
               className="w-full gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
             >
               <Send className="h-4 w-4" />
-              Distribute {contractBalance} ETH
+              Distribute {contractBalance} MNT
             </Button>
           )}
 
