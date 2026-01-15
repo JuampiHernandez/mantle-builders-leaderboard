@@ -100,11 +100,22 @@ const SLUG_TO_KEY: Record<string, string> = {
 let githubRateLimited = false
 
 function getScore(profile: any): number {
-  if (typeof profile.score === 'number') return profile.score
-  if (profile.score?.points) return profile.score.points
-  if (typeof profile.builder_score === 'number') return profile.builder_score
-  if (profile.builder_score?.points) return profile.builder_score.points
-  return 0
+  // Try all possible score locations
+  let score = 0
+  
+  if (typeof profile.score === 'number') score = profile.score
+  else if (profile.score?.points) score = profile.score.points
+  else if (typeof profile.builder_score === 'number') score = profile.builder_score
+  else if (profile.builder_score?.points) score = profile.builder_score.points
+  else if (profile.passport?.score) score = profile.passport.score
+  else if (profile.passport?.builder_score) score = profile.passport.builder_score
+  
+  // Debug for Julio
+  if (profile.display_name?.toLowerCase().includes('julio') || profile.name?.toLowerCase().includes('julio')) {
+    console.log(`   🔍 DEBUG Julio: score=${profile.score}, builder_score=${profile.builder_score}, passport=${JSON.stringify(profile.passport)}, calculated=${score}`)
+  }
+  
+  return score
 }
 
 async function fetchDataPoints(profileId: string, apiKey: string) {
@@ -151,21 +162,41 @@ async function getGitHubUsername(githubId: string, token?: string): Promise<stri
   return null
 }
 
+// Keywords to detect Mantle-related repos
+const MANTLE_KEYWORDS = [
+  'mantle', 'mnt', 'mantle-network', 'mantlenetwork', 'mantle-chain',
+  'mantle-testnet', 'mantle-mainnet', 'mantle-sdk', 'mantle-bridge'
+]
+
+function isMantleRepo(repo: any): boolean {
+  const name = (repo.name || '').toLowerCase()
+  const description = (repo.description || '').toLowerCase()
+  const topics = (repo.topics || []).map((t: string) => t.toLowerCase())
+  
+  // Check name, description, and topics for Mantle keywords
+  for (const keyword of MANTLE_KEYWORDS) {
+    if (name.includes(keyword)) return true
+    if (description.includes(keyword)) return true
+    if (topics.includes(keyword)) return true
+  }
+  return false
+}
+
 async function fetchGitHubRepos(username: string, token?: string) {
-  if (githubRateLimited) return { topByStars: [], mostRecent: [] }
+  if (githubRateLimited) return { topByStars: [], mostRecent: [], allRepos: [] }
   try {
     const headers: any = { "Accept": "application/vnd.github.v3+json", "User-Agent": "Mantle-Leaderboard" }
     if (token) headers["Authorization"] = `Bearer ${token}`
-    const response = await fetch(`${GITHUB_API_BASE}/users/${username}/repos?per_page=30&sort=pushed`, { headers })
+    const response = await fetch(`${GITHUB_API_BASE}/users/${username}/repos?per_page=100&sort=pushed`, { headers })
     
     if (response.status === 403 || response.status === 429) {
       githubRateLimited = true
-      return { topByStars: [], mostRecent: [] }
+      return { topByStars: [], mostRecent: [], allRepos: [] }
     }
-    if (!response.ok) return { topByStars: [], mostRecent: [] }
+    if (!response.ok) return { topByStars: [], mostRecent: [], allRepos: [] }
     
     const repos = await response.json()
-    if (!Array.isArray(repos)) return { topByStars: [], mostRecent: [] }
+    if (!Array.isArray(repos)) return { topByStars: [], mostRecent: [], allRepos: [] }
     
     const owned = repos.filter((r: any) => r.full_name?.startsWith(`${username}/`))
     const byStars = [...owned].sort((a: any, b: any) => (b.stargazers_count || 0) - (a.stargazers_count || 0))
@@ -177,10 +208,23 @@ async function fetchGitHubRepos(username: string, token?: string) {
       mostRecent: owned.slice(0, 3).map((r: any) => ({
         name: r.name, html_url: r.html_url, description: r.description, language: r.language,
         stargazers_count: r.stargazers_count, pushed_at: r.pushed_at
+      })),
+      // Return all repos for Mantle detection
+      allRepos: owned.map((r: any) => ({
+        name: r.name,
+        full_name: r.full_name,
+        html_url: r.html_url,
+        description: r.description,
+        language: r.language,
+        stargazers_count: r.stargazers_count,
+        forks_count: r.forks_count,
+        pushed_at: r.pushed_at,
+        topics: r.topics || [],
+        isMantle: isMantleRepo(r)
       }))
     }
   } catch (e) {}
-  return { topByStars: [], mostRecent: [] }
+  return { topByStars: [], mostRecent: [], allRepos: [] }
 }
 
 function apiProfileToDbProfile(profile: any) {
@@ -275,21 +319,37 @@ async function main() {
     } catch (e) { break }
   }
   
-  // Step 2: ENS search
+  // Step 2: ENS search - get multiple results and pick highest score
   console.log("\n📡 [2/5] Searching by ENS names...")
   for (const ens of ensNames) {
     try {
-      const params = new URLSearchParams({ query: JSON.stringify({ identity: ens }), page: "1", per_page: "1" })
+      // Get multiple results sorted by score descending
+      const params = new URLSearchParams({ 
+        query: JSON.stringify({ identity: ens }), 
+        sort: JSON.stringify({ score: { order: "desc" } }),
+        page: "1", 
+        per_page: "10" 
+      })
       const response = await fetch(`${TALENT_API_BASE}/search/advanced/profiles?${params}`, {
         headers: { "Accept": "application/json", "X-API-KEY": apiKey }
       })
       if (response.ok) {
         const data = await response.json()
-        if (data.profiles?.[0] && !foundIds.has(data.profiles[0].id)) {
-          foundIds.add(data.profiles[0].id)
-          data.profiles[0]._builderScore = getScore(data.profiles[0])
-          allProfiles.push(data.profiles[0])
-          console.log(`   ✅ Found: ${ens} → ${data.profiles[0].display_name || data.profiles[0].name}`)
+        if (data.profiles?.length) {
+          // Find the best profile (highest score) that we haven't added yet
+          for (const p of data.profiles) {
+            p._builderScore = getScore(p)
+          }
+          // Sort by score descending and pick the best one not already added
+          const sorted = data.profiles.sort((a: any, b: any) => (b._builderScore || 0) - (a._builderScore || 0))
+          for (const p of sorted) {
+            if (!foundIds.has(p.id)) {
+              foundIds.add(p.id)
+              allProfiles.push(p)
+              console.log(`   ✅ Found: ${ens} → ${p.display_name || p.name} (score: ${p._builderScore})`)
+              break
+            }
+          }
         }
       }
     } catch (e) {}
@@ -337,9 +397,11 @@ async function main() {
     }
   }
   
-  // Step 5: Fetch GitHub repos
-  console.log("\n📡 [5/5] Fetching GitHub repos...")
+  // Step 5: Fetch GitHub repos and detect Mantle projects
+  console.log("\n📡 [5/6] Fetching GitHub repos...")
   let githubCount = 0
+  const mantleRepos: any[] = [] // Collect all Mantle-related repos
+  
   for (let i = 0; i < allProfiles.length && !githubRateLimited; i++) {
     const profile = allProfiles[i]
     if (profile._githubUserId) {
@@ -358,6 +420,21 @@ async function main() {
             pushed_at: repos.mostRecent[0].pushed_at
           }
         }
+        
+        // Collect Mantle-related repos
+        for (const repo of repos.allRepos || []) {
+          if (repo.isMantle) {
+            mantleRepos.push({
+              ...repo,
+              owner_username: username,
+              owner_display_name: profile.display_name || profile.name,
+              owner_image_url: profile.image_url,
+              owner_profile_id: profile.id,
+              owner_builder_score: profile._builderScore
+            })
+          }
+        }
+        
         githubCount++
       }
     }
@@ -374,6 +451,19 @@ async function main() {
     console.log("   ⚠️ GitHub rate limited - some profiles may be missing repo data")
   }
   
+  // Step 6: Report Mantle repos found
+  console.log("\n📡 [6/6] Mantle-related repos found...")
+  console.log(`   Found ${mantleRepos.length} Mantle repos`)
+  if (mantleRepos.length > 0) {
+    console.log("   Top Mantle repos by stars:")
+    mantleRepos
+      .sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0))
+      .slice(0, 5)
+      .forEach((r, i) => {
+        console.log(`     ${i + 1}. ${r.full_name} (⭐ ${r.stargazers_count})`)
+      })
+  }
+  
   // Sort by score
   allProfiles.sort((a, b) => (b._builderScore || 0) - (a._builderScore || 0))
   
@@ -387,28 +477,70 @@ async function main() {
   // Save to Supabase
   console.log("\n💾 Saving to Supabase...")
   
-  // First, clear existing data
-  console.log("   Clearing existing data...")
+  // First, clear existing profiles
+  console.log("   Clearing existing profiles...")
   const { error: deleteError } = await supabase.from('profiles').delete().neq('id', '00000000-0000-0000-0000-000000000000')
   if (deleteError) {
     console.log("   ⚠️ Delete error (may be empty table):", deleteError.message)
   }
   
-  // Insert in batches
+  // Insert profiles in batches
   const dbProfiles = allProfiles.map(apiProfileToDbProfile)
   
   for (let i = 0; i < dbProfiles.length; i += 25) {
     const batch = dbProfiles.slice(i, i + 25)
     const { error } = await supabase.from('profiles').upsert(batch, { onConflict: 'id' })
     if (error) {
-      console.error(`   ❌ Batch ${Math.floor(i/25) + 1} error:`, error.message)
+      console.error(`   ❌ Profiles batch ${Math.floor(i/25) + 1} error:`, error.message)
     } else {
-      console.log(`   ✅ Batch ${Math.floor(i/25) + 1}: ${batch.length} profiles saved`)
+      console.log(`   ✅ Profiles batch ${Math.floor(i/25) + 1}: ${batch.length} profiles saved`)
+    }
+  }
+  
+  // Save Mantle repos
+  if (mantleRepos.length > 0) {
+    console.log("\n   Saving Mantle repos...")
+    
+    // Clear existing mantle repos
+    const { error: deleteReposError } = await supabase.from('mantle_repos').delete().neq('id', 0)
+    if (deleteReposError && !deleteReposError.message.includes('does not exist')) {
+      console.log("   ⚠️ Delete repos error:", deleteReposError.message)
+    }
+    
+    // Prepare repos for insertion (generate unique IDs)
+    const dbRepos = mantleRepos.map((repo, index) => ({
+      id: index + 1,
+      name: repo.name,
+      full_name: repo.full_name,
+      html_url: repo.html_url,
+      description: repo.description,
+      language: repo.language,
+      stargazers_count: repo.stargazers_count || 0,
+      forks_count: repo.forks_count || 0,
+      pushed_at: repo.pushed_at,
+      topics: repo.topics || [],
+      owner_username: repo.owner_username,
+      owner_display_name: repo.owner_display_name,
+      owner_image_url: repo.owner_image_url,
+      owner_profile_id: repo.owner_profile_id,
+      owner_builder_score: repo.owner_builder_score || 0
+    }))
+    
+    // Insert in batches
+    for (let i = 0; i < dbRepos.length; i += 25) {
+      const batch = dbRepos.slice(i, i + 25)
+      const { error } = await supabase.from('mantle_repos').upsert(batch, { onConflict: 'id' })
+      if (error) {
+        console.error(`   ❌ Mantle repos batch ${Math.floor(i/25) + 1} error:`, error.message)
+      } else {
+        console.log(`   ✅ Mantle repos batch ${Math.floor(i/25) + 1}: ${batch.length} repos saved`)
+      }
     }
   }
   
   console.log("\n✅ DONE!")
   console.log(`   ${dbProfiles.length} profiles saved to Supabase`)
+  console.log(`   ${mantleRepos.length} Mantle repos saved to Supabase`)
   console.log("\n   Your website should now show all data correctly!")
 }
 

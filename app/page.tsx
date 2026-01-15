@@ -158,6 +158,33 @@ function formatCurrency(val: string | null | undefined): string {
   return `$${num.toFixed(2)}`
 }
 
+// Type for Mantle repos
+interface MantleRepoContributor {
+  login: string
+  avatar_url: string
+  contributions: number
+  html_url: string
+}
+
+interface MantleRepo {
+  id: number
+  name: string
+  full_name: string
+  html_url: string
+  description: string | null
+  language: string | null
+  stargazers_count: number
+  forks_count: number
+  pushed_at: string | null
+  topics: string[]
+  owner_username: string | null
+  owner_display_name: string | null
+  owner_image_url: string | null
+  owner_profile_id: string | null
+  owner_builder_score: number
+  contributors?: MantleRepoContributor[]
+}
+
 export default function Page() {
   const router = useRouter()
   const [profiles, setProfiles] = useState<TalentProfile[]>([])
@@ -171,6 +198,9 @@ export default function Page() {
   
   // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false)
+  
+  // Mantle repos state
+  const [mantleRepos, setMantleRepos] = useState<MantleRepo[]>([])
 
   // Countdown timer effect
   useEffect(() => {
@@ -242,9 +272,25 @@ export default function Page() {
     fetchProfiles()
   }, [fetchProfiles])
 
+  // Fetch Mantle repos
+  const fetchMantleRepos = useCallback(async () => {
+    try {
+      const response = await fetch("/api/mantle-repos")
+      if (response.ok) {
+        const data = await response.json()
+        if (data.repos && Array.isArray(data.repos)) {
+          setMantleRepos(data.repos)
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching Mantle repos:", err)
+    }
+  }, [])
+
   useEffect(() => {
     fetchProfiles()
-  }, [fetchProfiles])
+    fetchMantleRepos()
+  }, [fetchProfiles, fetchMantleRepos])
 
   // Filter profiles
   const filteredProfiles = profiles.filter(profile => {
@@ -636,6 +682,131 @@ export default function Page() {
             </>
           )}
         </section>
+
+        {/* Mantle Projects Section */}
+        {mantleRepos.length > 0 && (
+          <section className="mb-12">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Mantle Ecosystem Projects</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Open source repositories building on Mantle
+                </p>
+              </div>
+              <Badge variant="outline" className="text-emerald-400 border-emerald-400/30">
+                {mantleRepos.length} Projects
+              </Badge>
+            </div>
+            
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {mantleRepos.slice(0, 8).map((repo) => (
+                <a
+                  key={repo.id}
+                  href={repo.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group rounded-lg border border-border bg-card p-4 hover:border-emerald-500/50 hover:bg-card/80 transition-all duration-200"
+                >
+                  {/* Repo Header */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileCode className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                      <span className="font-medium truncate group-hover:text-emerald-400 transition-colors">
+                        {repo.name}
+                      </span>
+                    </div>
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                  </div>
+                  
+                  {/* Description */}
+                  {repo.description && (
+                    <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
+                      {repo.description}
+                    </p>
+                  )}
+                  
+                  {/* Stats Row */}
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+                    <span className="flex items-center gap-1">
+                      <Star className="h-3 w-3 text-yellow-400" />
+                      {repo.stargazers_count}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <GitBranch className="h-3 w-3" />
+                      {repo.forks_count}
+                    </span>
+                    {repo.language && (
+                      <Badge variant="outline" className="text-xs px-1.5 py-0 h-5">
+                        {repo.language}
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {/* Contributors */}
+                  <div className="pt-2 border-t border-border/50">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Contributors</span>
+                      {repo.contributors && repo.contributors.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground">{repo.contributors.length}+</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {repo.contributors && repo.contributors.length > 0 ? (
+                        <>
+                          <div className="flex -space-x-1.5">
+                            {repo.contributors.slice(0, 5).map((contributor, idx) => (
+                              <a
+                                key={contributor.login}
+                                href={contributor.html_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="relative hover:z-10 transition-transform hover:scale-110"
+                                title={`${contributor.login} (${contributor.contributions} commits)`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Avatar className="h-6 w-6 border-2 border-card">
+                                  <AvatarImage src={contributor.avatar_url} />
+                                  <AvatarFallback className="text-[8px] bg-muted">
+                                    {contributor.login[0]?.toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </a>
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground ml-1 truncate">
+                            {repo.contributors[0]?.login}
+                            {repo.contributors.length > 1 && ` +${repo.contributors.length - 1}`}
+                          </span>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage src={repo.owner_image_url || undefined} />
+                            <AvatarFallback className="text-[8px] bg-muted">
+                              {(repo.owner_username || '?')[0]?.toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs text-muted-foreground truncate">
+                            {repo.owner_username}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+            
+            {mantleRepos.length > 8 && (
+              <div className="mt-4 text-center">
+                <Button variant="outline" size="sm" className="gap-2">
+                  View All {mantleRepos.length} Projects
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Dashboard Charts Section */}
         <section className="mb-12">

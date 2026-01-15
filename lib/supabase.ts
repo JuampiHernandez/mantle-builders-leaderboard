@@ -150,6 +150,71 @@ CREATE POLICY "Allow service role full access" ON profiles
   FOR ALL USING (true);
 `
 
+// SQL to create the mantle_repos table (run this in Supabase SQL editor)
+export const CREATE_MANTLE_REPOS_TABLE_SQL = `
+-- Create mantle_repos table for Mantle-related GitHub repositories
+CREATE TABLE IF NOT EXISTS mantle_repos (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  html_url TEXT NOT NULL,
+  description TEXT,
+  language TEXT,
+  stargazers_count INTEGER DEFAULT 0,
+  forks_count INTEGER DEFAULT 0,
+  pushed_at TIMESTAMPTZ,
+  topics TEXT[] DEFAULT '{}',
+  
+  -- Owner info
+  owner_username TEXT,
+  owner_display_name TEXT,
+  owner_image_url TEXT,
+  owner_profile_id UUID REFERENCES profiles(id),
+  owner_builder_score INTEGER DEFAULT 0,
+  
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_mantle_repos_stars ON mantle_repos(stargazers_count DESC);
+CREATE INDEX IF NOT EXISTS idx_mantle_repos_pushed ON mantle_repos(pushed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mantle_repos_owner ON mantle_repos(owner_profile_id);
+
+-- Enable Row Level Security
+ALTER TABLE mantle_repos ENABLE ROW LEVEL SECURITY;
+
+-- Allow public read access
+CREATE POLICY "Allow public read access" ON mantle_repos
+  FOR SELECT USING (true);
+
+-- Allow service role full access
+CREATE POLICY "Allow service role full access" ON mantle_repos
+  FOR ALL USING (true);
+`
+
+// Type for Mantle repos
+export interface DbMantleRepo {
+  id: number
+  name: string
+  full_name: string
+  html_url: string
+  description: string | null
+  language: string | null
+  stargazers_count: number
+  forks_count: number
+  pushed_at: string | null
+  topics: string[]
+  owner_username: string | null
+  owner_display_name: string | null
+  owner_image_url: string | null
+  owner_profile_id: string | null
+  owner_builder_score: number
+  created_at: string
+  updated_at: string
+}
+
 // Helper to convert API profile to DB profile
 export function apiProfileToDbProfile(profile: any): Partial<DbProfile> {
   const topProject = profile._githubProjects?.topByStars?.[0]
