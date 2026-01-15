@@ -92,8 +92,8 @@ export const BUILDER_REWARDS_ABI = [
 // Contract address - UPDATE THIS after deployment!
 export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "";
 
-// Mantle Network configuration
-export const MANTLE_CHAIN = {
+// Mantle Mainnet configuration
+export const MANTLE_MAINNET = {
   id: 5000,
   name: "Mantle",
   network: "mantle",
@@ -114,7 +114,7 @@ export const MANTLE_CHAIN = {
 // Mantle Sepolia Testnet configuration
 export const MANTLE_SEPOLIA_CHAIN = {
   id: 5003,
-  name: "Mantle Sepolia",
+  name: "Mantle Sepolia Testnet",
   network: "mantle-sepolia",
   nativeCurrency: {
     decimals: 18,
@@ -129,6 +129,9 @@ export const MANTLE_SEPOLIA_CHAIN = {
     default: { name: "Mantlescan", url: "https://sepolia.mantlescan.xyz" },
   },
 };
+
+// USE TESTNET FOR NOW - Change to MANTLE_MAINNET when ready for production
+export const MANTLE_CHAIN = MANTLE_SEPOLIA_CHAIN;
 
 // Distribution percentages for display
 export const DISTRIBUTION_PERCENTAGES = [
